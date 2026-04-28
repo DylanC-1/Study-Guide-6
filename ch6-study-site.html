@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chapter 6 — Frequent Patterns & Association Rules</title>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Inconsolata:wght@400;600;700&family=Raleway:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #f5f0e8;
+    --paper: #ede8dc;
+    --warm-white: #faf7f2;
+    --ink: #1c1a16;
+    --ink-mid: #3d3a33;
+    --ink-light: #7a7568;
+    --red: #c0392b;
+    --amber: #d4840a;
+    --green: #2e7d53;
+    --blue: #2563a8;
+    --rule: #c8c1b0;
+    --highlight: #f0e6c8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Raleway', sans-serif;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* Paper texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
+
+  /* Ruled lines on body */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 31px,
+      rgba(180,170,150,0.15) 31px,
+      rgba(180,170,150,0.15) 32px
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 0 28px; position: relative; z-index: 1; }
+
+  /* Header */
+  header {
+    padding: 52px 28px 36px;
+    border-bottom: 3px double var(--rule);
+    position: relative;
+    z-index: 1;
+    background: var(--warm-white);
+  }
+
+  .header-inner {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .chapter-tag {
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--red);
+    border: 1px solid var(--red);
+    display: inline-block;
+    padding: 3px 10px;
+    margin-bottom: 16px;
+  }
+
+  header h1 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: clamp(1.8rem, 4.5vw, 3rem);
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  header h1 em {
+    font-style: italic;
+    color: var(--red);
+  }
+
+  header p {
+    font-family: 'Raleway', sans-serif;
+    font-weight: 300;
+    font-size: 14px;
+    color: var(--ink-light);
+    margin-top: 8px;
+  }
+
+  /* Tab nav — looks like physical tabs */
+  nav {
+    display: flex;
+    gap: 0;
+    padding: 0 28px;
+    background: var(--warm-white);
+    border-bottom: 2px solid var(--rule);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  nav button {
+    padding: 14px 24px;
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--rule);
+    color: var(--ink-light);
+    cursor: pointer;
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    white-space: nowrap;
+    position: relative;
+  }
+
+  nav button.active {
+    color: var(--red);
+    background: var(--cream);
+  }
+
+  nav button.active::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--cream);
+  }
+
+  nav button:hover:not(.active) { color: var(--ink); background: var(--highlight); }
+
+  /* Sections */
+  section { display: none; }
+  section.active { display: block; }
+
+  /* ===== FLASHCARDS ===== */
+  .fc-wrap { padding: 40px 28px 80px; position: relative; z-index: 1; }
+
+  .fc-header {
+    display: flex;
+    align-items: baseline;
+    gap: 20px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 14px;
+  }
+
+  .fc-header h2 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .fc-header span {
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    color: var(--ink-light);
+  }
+
+  .cat-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+
+  .cat-btn {
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--ink-light);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .cat-btn.active {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--cream);
+  }
+
+  .cat-btn:hover:not(.active) { border-color: var(--ink); color: var(--ink); }
+
+  /* Card container — mimics index card */
+  .card-area {
+    position: relative;
+    max-width: 620px;
+    margin: 0 auto 24px;
+  }
+
+  /* Stack shadow cards */
+  .card-area::before, .card-area::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    z-index: 0;
+  }
+
+  .card-area::before { transform: rotate(1.5deg) translate(4px, 4px); }
+  .card-area::after { transform: rotate(-1deg) translate(-3px, 5px); }
+
+  .flashcard-scene {
+    perspective: 1000px;
+    width: 100%;
+    height: 280px;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+  }
+
+  .flashcard-inner {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .flashcard-inner.flipped { transform: rotateY(180deg); }
+
+  .card-face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 36px 40px;
+    background: var(--warm-white);
+    border: 1px solid var(--rule);
+    box-shadow: 2px 4px 12px rgba(0,0,0,0.07);
+  }
+
+  .card-back { transform: rotateY(180deg); background: var(--highlight); }
+
+  /* Red margin line on left */
+  .card-face::before {
+    content: '';
+    position: absolute;
+    left: 52px;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(192,57,43,0.25);
+  }
+
+  /* Hole punches */
+  .card-face::after {
+    content: '○ ○ ○';
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    font-size: 8px;
+    color: var(--rule);
+    letter-spacing: 2px;
+    writing-mode: vertical-rl;
+  }
+
+  .card-face-label {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 18px;
+  }
+
+  .card-back .card-face-label { color: var(--green); }
+
+  .card-term {
+    font-family: 'Libre Baskerville', serif;
+    font-size: clamp(1.2rem, 3vw, 1.65rem);
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--ink);
+  }
+
+  .card-def {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--ink-mid);
+    font-style: italic;
+  }
+
+  .card-def code {
+    font-family: 'Inconsolata', monospace;
+    font-style: normal;
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    font-size: 13px;
+  }
+
+  .flip-hint {
+    text-align: center;
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--ink-light);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .card-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 620px;
+    margin: 0 auto;
+  }
+
+  .progress-info {
+    font-family: 'Inconsolata', monospace;
+    font-size: 13px;
+    color: var(--ink-light);
+  }
+
+  .btn-row { display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    background: transparent;
+    border: 1px solid var(--ink);
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { background: var(--ink); color: var(--cream); }
+
+  .btn-fill { background: var(--ink); color: var(--cream); }
+  .btn-fill:hover { background: var(--ink-mid); }
+
+  .btn-red { border-color: var(--red); color: var(--red); }
+  .btn-red:hover { background: var(--red); color: #fff; }
+
+  /* Progress bar */
+  .progress-bar-outer {
+    max-width: 620px;
+    margin: 0 auto 20px;
+    height: 3px;
+    background: var(--rule);
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--red);
+    transition: width 0.4s ease;
+  }
+
+  /* ===== QUIZ ===== */
+  .quiz-wrap { padding: 40px 28px 80px; position: relative; z-index: 1; }
+
+  .quiz-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 14px;
+  }
+
+  .quiz-topbar h2 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .quiz-stats {
+    display: flex;
+    gap: 20px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 13px;
+  }
+
+  .qs-score { color: var(--green); font-weight: 700; }
+  .qs-num { color: var(--ink-light); }
+
+  .q-card {
+    background: var(--warm-white);
+    border: 1px solid var(--rule);
+    border-top: 4px solid var(--red);
+    padding: 32px;
+    margin-bottom: 20px;
+    box-shadow: 2px 4px 12px rgba(0,0,0,0.05);
+    animation: slideIn 0.35s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .q-cat-tag {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 14px;
+  }
+
+  .q-text {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin-bottom: 24px;
+    color: var(--ink);
+  }
+
+  .options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .opt-btn {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--cream);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    font-family: 'Raleway', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    transition: all 0.15s;
+  }
+
+  .opt-btn:hover:not(:disabled) { border-color: var(--blue); background: rgba(37,99,168,0.05); }
+
+  .opt-btn.correct { background: rgba(46,125,83,0.1); border-color: var(--green); color: var(--green); }
+  .opt-btn.wrong { background: rgba(192,57,43,0.08); border-color: var(--red); color: var(--red); }
+
+  .opt-letter {
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    width: 22px;
+    height: 22px;
+    border: 1px solid currentColor;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .fb-box {
+    margin-top: 18px;
+    padding: 14px 18px;
+    font-family: 'Libre Baskerville', serif;
+    font-size: 14px;
+    line-height: 1.65;
+    font-style: italic;
+    display: none;
+  }
+
+  .fb-box.show { display: block; }
+  .fb-box.correct { background: rgba(46,125,83,0.08); border-left: 3px solid var(--green); color: var(--green); }
+  .fb-box.wrong { background: rgba(192,57,43,0.06); border-left: 3px solid var(--red); color: var(--red); }
+
+  .quiz-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+
+  /* Results */
+  .results-panel {
+    display: none;
+    padding: 48px 28px 80px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .results-panel.show { display: block; }
+
+  .result-big {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .result-pct {
+    font-family: 'Libre Baskerville', serif;
+    font-size: clamp(5rem, 15vw, 9rem);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .result-pct.great { color: var(--green); }
+  .result-pct.ok { color: var(--amber); }
+  .result-pct.poor { color: var(--red); }
+
+  .result-subtitle {
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    margin-top: 4px;
+  }
+
+  .result-stats {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin: 32px 0;
+    flex-wrap: wrap;
+  }
+
+  .r-stat {
+    border: 1px solid var(--rule);
+    padding: 20px 32px;
+    text-align: center;
+    background: var(--warm-white);
+    min-width: 110px;
+  }
+
+  .r-stat .num {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 2.5rem;
+    font-weight: 700;
+    display: block;
+    line-height: 1;
+  }
+
+  .r-stat .lbl {
+    font-family: 'Inconsolata', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--ink-light);
+    display: block;
+    margin-top: 6px;
+  }
+
+  .r-stat.c .num { color: var(--green); }
+  .r-stat.w .num { color: var(--red); }
+
+  .review-section { margin-top: 40px; }
+
+  .review-section h3 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .rev-item {
+    padding: 16px;
+    background: var(--warm-white);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--rule);
+    margin-bottom: 10px;
+  }
+
+  .rev-item.correct { border-left-color: var(--green); }
+  .rev-item.wrong { border-left-color: var(--red); }
+
+  .rev-q { font-family: 'Libre Baskerville', serif; font-size: 13.5px; margin-bottom: 6px; }
+  .rev-your { font-family: 'Inconsolata', monospace; font-size: 12px; color: var(--red); margin-bottom: 3px; }
+  .rev-ans { font-family: 'Inconsolata', monospace; font-size: 12px; color: var(--green); }
+
+  /* ===== CHEAT SHEET ===== */
+  .cs-wrap { padding: 40px 28px 80px; position: relative; z-index: 1; }
+
+  .cs-wrap h2 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 1.5rem;
+    margin-bottom: 6px;
+  }
+
+  .cs-intro {
+    font-family: 'Raleway', sans-serif;
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-bottom: 28px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .cs-section { margin-bottom: 36px; }
+
+  .cs-section-title {
+    font-family: 'Inconsolata', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .cs-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+
+  .cs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+  }
+
+  .cs-card {
+    background: var(--warm-white);
+    border: 1px solid var(--rule);
+    padding: 18px 20px;
+    transition: border-color 0.15s;
+  }
+
+  .cs-card:hover { border-color: var(--ink); }
+
+  .cs-card h4 {
+    font-family: 'Libre Baskerville', serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--amber);
+  }
+
+  .cs-card p {
+    font-family: 'Raleway', sans-serif;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--ink-mid);
+    font-weight: 400;
+  }
+
+  .cs-card code {
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    background: rgba(0,0,0,0.07);
+    padding: 1px 5px;
+  }
+
+  /* Formula box */
+  .formula-box {
+    background: var(--highlight);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--amber);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 13px;
+    line-height: 1.9;
+  }
+
+  .formula-box .f-label {
+    font-weight: 700;
+    color: var(--red);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  @media (max-width: 600px) {
+    .card-controls { flex-direction: column; gap: 14px; }
+    .quiz-topbar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  }
+
+  ::-webkit-scrollbar { height: 4px; width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--paper); }
+  ::-webkit-scrollbar-thumb { background: var(--rule); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="chapter-tag">Chapter 6 · Data Mining</div>
+    <h1>Mining <em>Frequent Patterns,</em><br>Associations & Correlations</h1>
+    <p>Flashcards · Quiz · Reference — built from the lecture slides</p>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="show('fc', this)">§ Flashcards</button>
+  <button onclick="show('quiz', this)">✎ Quiz</button>
+  <button onclick="show('cs', this)">≡ Reference</button>
+</nav>
+
+<!-- ======== FLASHCARDS ======== -->
+<section id="fc" class="active">
+  <div class="fc-wrap container">
+    <div class="fc-header">
+      <h2>Flashcards</h2>
+      <span id="fc-count-label">32 cards</span>
+    </div>
+
+    <div class="cat-row">
+      <button class="cat-btn active" onclick="filterFC('all', this)">All</button>
+      <button class="cat-btn" onclick="filterFC('concepts', this)">Concepts</button>
+      <button class="cat-btn" onclick="filterFC('apriori', this)">Apriori</button>
+      <button class="cat-btn" onclick="filterFC('eclat', this)">ECLAT</button>
+      <button class="cat-btn" onclick="filterFC('eval', this)">Evaluation</button>
+    </div>
+
+    <div class="progress-bar-outer">
+      <div class="progress-bar-fill" id="fc-prog" style="width:3%"></div>
+    </div>
+
+    <div class="card-area">
+      <div class="flashcard-scene" onclick="flipFC()">
+        <div class="flashcard-inner" id="fc-inner">
+          <div class="card-face">
+            <div class="card-face-label">Term</div>
+            <div class="card-term" id="fc-term">Loading…</div>
+          </div>
+          <div class="card-face card-back">
+            <div class="card-face-label">Definition</div>
+            <div class="card-def" id="fc-def">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="flip-hint">— click card to flip · arrow keys to navigate · space to flip —</p>
+
+    <div class="card-controls">
+      <span class="progress-info" id="fc-counter">1 / 32</span>
+      <div class="btn-row">
+        <button class="btn btn-red" onclick="shuffleFC()">⇌ Shuffle</button>
+        <button class="btn" onclick="prevFC()">← Prev</button>
+        <button class="btn btn-fill" onclick="nextFC()">Next →</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== QUIZ ======== -->
+<section id="quiz">
+  <div class="quiz-wrap container" id="quiz-wrap">
+    <div class="quiz-topbar">
+      <h2>Quiz</h2>
+      <div class="quiz-stats">
+        <span class="qs-score" id="qs-score">Score: 0</span>
+        <span class="qs-num" id="qs-num">Q 1 / 16</span>
+      </div>
+    </div>
+    <div class="progress-bar-outer">
+      <div class="progress-bar-fill" id="q-prog" style="width:0%"></div>
+    </div>
+    <div class="q-card" id="q-card">
+      <div class="q-cat-tag" id="q-cat"></div>
+      <div class="q-text" id="q-text"></div>
+      <div class="options-list" id="opts"></div>
+      <div class="fb-box" id="fb"></div>
+    </div>
+    <div class="quiz-footer">
+      <button class="btn btn-fill" id="q-next" onclick="nextQ()" style="display:none">Next Question →</button>
+    </div>
+  </div>
+
+  <div class="results-panel" id="results">
+    <div class="container">
+      <div class="result-big">
+        <div class="result-pct" id="r-pct"></div>
+        <div class="result-subtitle" id="r-sub"></div>
+      </div>
+      <div class="result-stats">
+        <div class="r-stat c"><span class="num" id="r-c">0</span><span class="lbl">Correct</span></div>
+        <div class="r-stat w"><span class="num" id="r-w">0</span><span class="lbl">Wrong</span></div>
+        <div class="r-stat"><span class="num" id="r-t">0</span><span class="lbl">Total</span></div>
+      </div>
+      <div style="text-align:center">
+        <button class="btn btn-fill" onclick="initQuiz()">Retake Quiz</button>
+      </div>
+      <div class="review-section">
+        <h3>Answer Review</h3>
+        <div id="rev-list"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== CHEAT SHEET ======== -->
+<section id="cs">
+  <div class="cs-wrap container">
+    <h2>Quick Reference</h2>
+    <p class="cs-intro">Essential formulas, definitions, and algorithms from Chapter 6</p>
+
+    <div class="cs-section">
+      <div class="cs-section-title">Core Formulas</div>
+      <div class="formula-box">
+        <span class="f-label">Support (relative)</span>
+        s(A → B) = P(A ∪ B) = support_count(A ∪ B) / N
+      </div>
+      <div class="formula-box">
+        <span class="f-label">Confidence</span>
+        c(A → B) = P(B|A) = support_count(A ∪ B) / support_count(A)
+      </div>
+      <div class="formula-box">
+        <span class="f-label">Lift (Correlation Measure)</span>
+        lift(A, B) = P(A ∪ B) / [P(A) · P(B)] = conf(A → B) / sup(B)<br>
+        &lt; 1: negatively correlated · = 1: independent · &gt; 1: positively correlated
+      </div>
+    </div>
+
+    <div class="cs-section">
+      <div class="cs-section-title">Key Concepts</div>
+      <div class="cs-grid" id="cs-grid"></div>
+    </div>
+
+    <div class="cs-section">
+      <div class="cs-section-title">Apriori Algorithm Steps</div>
+      <div class="cs-grid" id="algo-grid"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// FLASHCARD DATA
+// ============================================================
+const cards = [
+  { cat:'concepts', term:'Frequent Pattern', def:'A pattern (set of items, subsequences, or substructures) that occurs frequently in a dataset. Foundation for association, correlation, and causality analysis.' },
+  { cat:'concepts', term:'Frequent Itemset', def:'A set of items that appear together frequently in transaction data. E.g., {milk, bread} appearing in many shopping baskets.' },
+  { cat:'concepts', term:'Sequential Pattern', def:'A frequent ordered sequence of items. E.g., buying a PC → then a camera → then a memory card.' },
+  { cat:'concepts', term:'Market Basket Analysis', def:'The earliest and most classic application of frequent pattern mining; finds which products are often purchased together.' },
+  { cat:'concepts', term:'Association Rule', def:'An implication A → B where A and B are itemsets. Describes a co-occurrence relationship, NOT causality.' },
+  { cat:'concepts', term:'Support (s)', def:'The fraction of all transactions that contain both A and B. s(A → B) = P(A ∪ B). Measures usefulness/frequency of a rule.' },
+  { cat:'concepts', term:'Confidence (c)', def:'The percentage of transactions containing A that also contain B. c(A → B) = P(B|A). Measures certainty/reliability.' },
+  { cat:'concepts', term:'Strong Association Rule', def:'A rule that satisfies both minimum support (min_sup) AND minimum confidence (min_conf) thresholds.' },
+  { cat:'concepts', term:'min_sup', def:'Minimum support threshold set by domain experts. An itemset is frequent if its support ≥ min_sup.' },
+  { cat:'concepts', term:'min_conf', def:'Minimum confidence threshold. A rule A → B is strong if conf(A → B) ≥ min_conf.' },
+  { cat:'concepts', term:'k-itemset', def:'An itemset containing exactly k items. E.g., {beer, diaper, milk} is a 3-itemset. k items generate up to 2^k − 1 possible itemsets.' },
+  { cat:'concepts', term:'Lk', def:'The set of frequent k-itemsets — all itemsets of size k whose support count ≥ min_sup.' },
+  { cat:'concepts', term:'Ck', def:'The set of candidate k-itemsets generated from Lk−1 before testing against the database.' },
+  { cat:'apriori', term:'Apriori Property', def:'All nonempty subsets of a frequent itemset must also be frequent. If an itemset is infrequent, all its supersets are infrequent too.' },
+  { cat:'apriori', term:'Antimonotonicity', def:'If a set fails the minimum support test, all of its supersets also fail. Enables efficient pruning of the candidate space.' },
+  { cat:'apriori', term:'Downward Closure Property', def:'Any subset of a frequent itemset must be frequent. E.g., if {beer, diaper, nuts} is frequent, so is {beer, diaper}.' },
+  { cat:'apriori', term:'Apriori Algorithm', def:'Candidate generation-and-test approach. Steps: (1) Find frequent 1-itemsets, (2) Generate C(k+1) from Lk, (3) Test candidates, (4) Repeat until no new frequent sets.' },
+  { cat:'apriori', term:'Join Step (Apriori)', def:'Generate Ck by joining Lk−1 with itself. Members are joinable if their first (k−2) items are in common. Items must be in lexicographic order.' },
+  { cat:'apriori', term:'Prune Step (Apriori)', def:'Remove candidate k-itemsets from Ck if any of their (k−1)-subsets are NOT in Lk−1. Applies the Apriori property.' },
+  { cat:'apriori', term:'Association Rule Generation', def:'For each frequent itemset I, generate all nonempty subsets S. Output rule S → (I−S) if support_count(I)/support_count(S) ≥ min_conf.' },
+  { cat:'apriori', term:'Why Apriori Prunes', def:'A long pattern {a1…a100} has 2^100 − 1 sub-patterns. Pruning using min_sup avoids testing infrequent supersets and saves enormous computation.' },
+  { cat:'eclat', term:'ECLAT', def:'Equivalence Class Transformation. A vertical data format approach to frequent itemset mining (Zaki et al., KDD\'97).' },
+  { cat:'eclat', term:'Vertical Data Format', def:'Represents data as {item: TID_set} pairs instead of {TID: itemset}. Support count = length of the TID_set.' },
+  { cat:'eclat', term:'Horizontal Data Format', def:'Used by Apriori. Represents data as {TID: itemset}. ECLAT uses the opposite (vertical) format.' },
+  { cat:'eclat', term:'TID_set', def:'The set of transaction IDs containing a given item. Used in ECLAT; intersecting two TID_sets gives the TID_set of their union.' },
+  { cat:'eclat', term:'ECLAT Mining Process', def:'Start with frequent 1-itemsets. Compute (k+1)-itemsets by intersecting TID_sets of k-itemsets. Repeat until no new frequent itemsets are found.' },
+  { cat:'eval', term:'Pattern Evaluation Problem', def:'Strong rules (high support + confidence) can still be misleading if they don\'t capture true correlation. Additional interestingness measures are needed.' },
+  { cat:'eval', term:'Lift', def:'lift(A,B) = P(A∪B) / [P(A)·P(B)]. Measures true correlation. < 1: negative, = 1: independent, > 1: positive correlation.' },
+  { cat:'eval', term:'Lift < 1 (Negative Correlation)', def:'Purchasing A actually decreases the likelihood of purchasing B. A support-confidence framework alone cannot detect this.' },
+  { cat:'eval', term:'Lift > 1 (Positive Correlation)', def:'Occurrence of A implies occurrence of B. The co-occurrence is stronger than expected by chance.' },
+  { cat:'eval', term:'Misleading Confidence Example', def:'computer_games → videos: support=40%, confidence=67%. But P(video)=75% > 67%, so games actually reduce video purchases! Lift = 0.89 < 1.' },
+  { cat:'eval', term:'Interestingness Measures', def:'Over 20 measures exist beyond support and confidence (e.g., lift, χ², cosine, Jaccard, Mutual Information, Conviction, Laplace) — each captures different aspects of pattern quality.' },
+];
+
+let fcDeck = [...cards];
+let fcIdx = 0;
+let fcFlipped = false;
+
+function renderFC() {
+  const c = fcDeck[fcIdx];
+  document.getElementById('fc-term').textContent = c.term;
+  document.getElementById('fc-def').innerHTML = c.def;
+  document.getElementById('fc-inner').classList.remove('flipped');
+  fcFlipped = false;
+  const n = fcDeck.length;
+  document.getElementById('fc-counter').textContent = `${fcIdx + 1} / ${n}`;
+  document.getElementById('fc-prog').style.width = `${((fcIdx + 1) / n) * 100}%`;
+  document.getElementById('fc-count-label').textContent = `${n} cards`;
+}
+
+function flipFC() {
+  fcFlipped = !fcFlipped;
+  document.getElementById('fc-inner').classList.toggle('flipped', fcFlipped);
+}
+
+function nextFC() { fcIdx = (fcIdx + 1) % fcDeck.length; renderFC(); }
+function prevFC() { fcIdx = (fcIdx - 1 + fcDeck.length) % fcDeck.length; renderFC(); }
+
+function shuffleFC() {
+  for (let i = fcDeck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [fcDeck[i], fcDeck[j]] = [fcDeck[j], fcDeck[i]];
+  }
+  fcIdx = 0; renderFC();
+}
+
+function filterFC(cat, btn) {
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  fcDeck = cat === 'all' ? [...cards] : cards.filter(c => c.cat === cat);
+  fcIdx = 0; renderFC();
+}
+
+renderFC();
+
+// ============================================================
+// QUIZ DATA
+// ============================================================
+const questions = [
+  { cat:'Basic Concepts', q:'What is the support of an association rule A → B?', opts:['P(B|A)','P(A∪B) / total transactions','P(A) · P(B)','P(A|B)'], ans:1, explain:'Support = P(A∪B): the fraction of ALL transactions containing both A and B.' },
+  { cat:'Basic Concepts', q:'Confidence of a rule A → B measures:', opts:['How often A and B appear independently','P(B|A): fraction of A-transactions that also contain B','The total frequency of B in the dataset','The lift between A and B'], ans:1, explain:'Confidence = P(B|A) = support_count(A∪B) / support_count(A).' },
+  { cat:'Basic Concepts', q:'A "strong" association rule must satisfy:', opts:['Only min_sup','Only min_conf','Both min_sup AND min_conf','Either min_sup OR min_conf'], ans:2, explain:'Both thresholds must be met: minimum support (usefulness) AND minimum confidence (certainty).' },
+  { cat:'Basic Concepts', q:'In the Beer→Diaper example (5 transactions, Beer+Diaper co-occur 3 times, Beer appears 3 times), what is the confidence of Beer→Diaper?', opts:['60%','75%','100%','40%'], ans:2, explain:'Confidence = support_count({Beer,Diaper}) / support_count({Beer}) = 3/3 = 100%.' },
+  { cat:'Basic Concepts', q:'In the same example, what is the SUPPORT of Beer→Diaper?', opts:['100%','40%','75%','60%'], ans:3, explain:'Support = support_count({Beer,Diaper}) / total transactions = 3/5 = 60%.' },
+  { cat:'Apriori', q:'The Apriori Property states that:', opts:['All supersets of a frequent itemset are frequent','All nonempty subsets of a frequent itemset must be frequent','Infrequent itemsets can have frequent subsets','Confidence is always less than support'], ans:1, explain:'Apriori Property (downward closure): every nonempty subset of a frequent itemset must also be frequent.' },
+  { cat:'Apriori', q:'If itemset {A, B} is found to be infrequent, what can we conclude about {A, B, C}?', opts:['It might still be frequent','It is definitely infrequent','We must scan the DB to check','Its confidence is 0'], ans:1, explain:'By antimonotonicity: if a set is infrequent, ALL its supersets are also infrequent. No DB scan needed.' },
+  { cat:'Apriori', q:'How does Apriori generate C3 (candidate 3-itemsets) from L2?', opts:['By randomly combining 3 items','By joining L2 with itself where items share the first (k−2)=1 item in common','By scanning the full database','By applying confidence pruning'], ans:1, explain:'L2 JOIN L2: two 2-itemsets are joined if their first 1 item matches, producing 3-itemsets.' },
+  { cat:'Apriori', q:'Why is the combinatorial explosion problem serious in frequent pattern mining?', opts:['100 items produces up to 2^100 − 1 ≈ 10^30 sub-patterns','The database is always too large','Confidence calculations take O(n²)','Items must be sorted alphabetically'], ans:0, explain:'{a1,…,a100} has 2^100 − 1 ≈ 1.27×10^30 possible subsets — an astronomical number.' },
+  { cat:'Apriori', q:'The Prune Step in Apriori removes a candidate k-itemset c from Ck if:', opts:['c\'s support count is zero','c has more than k items','Any (k−1)-subset of c is not in Lk−1','c appears in fewer than 10 transactions'], ans:2, explain:'If any (k−1)-subset of a candidate is not frequent, the candidate cannot be frequent either.' },
+  { cat:'ECLAT', q:'How does ECLAT represent the database differently from Apriori?', opts:['ECLAT uses {TID: itemset} format','ECLAT uses {item: TID_set} vertical format','ECLAT stores only frequent itemsets','ECLAT uses bit-vectors for each transaction'], ans:1, explain:'ECLAT uses vertical data format: {item: TID_set}, while Apriori uses horizontal {TID: itemset} format.' },
+  { cat:'ECLAT', q:'In ECLAT, the support count of an itemset is:', opts:['The sum of all item frequencies','The length of the itemset\'s TID_set','Calculated by joining TID_sets','The number of distinct items'], ans:1, explain:'Support count = |TID_set| — simply the size of the set of transactions containing the itemset.' },
+  { cat:'ECLAT', q:'In ECLAT, how is the TID_set of a 2-itemset {I1, I2} found?', opts:['By scanning the entire database twice','By intersecting TID_set(I1) ∩ TID_set(I2)','By joining TID_sets with a union operation','By summing individual support counts'], ans:1, explain:'In ECLAT, k-itemset TID_sets are computed by intersecting the TID_sets of their (k−1)-item subsets.' },
+  { cat:'Pattern Evaluation', q:'Lift(A, B) = 0.89 means:', opts:['A and B are positively correlated','A and B are independent','A and B are negatively correlated','The rule has low confidence'], ans:2, explain:'Lift < 1 means negative correlation: buying A actually makes B less likely than expected by chance.' },
+  { cat:'Pattern Evaluation', q:'In the computer games→videos example (conf=67%, sup(videos)=75%), buying games actually:', opts:['Increases video purchases','Has no effect on video purchases','Decreases the likelihood of video purchases','Is independent of videos'], ans:2, explain:'Lift = 0.67/0.75 = 0.89 < 1. P(video|games) < P(video), so games negatively correlate with videos.' },
+  { cat:'Pattern Evaluation', q:'Why is support+confidence alone insufficient for pattern evaluation?', opts:['They are computationally expensive','A strong rule can still show negative or misleading correlation','They always overestimate support','They require too many database scans'], ans:1, explain:'High support and confidence don\'t guarantee positive correlation. Lift and other measures are needed to detect true relationships.' },
+];
+
+let qDeck = [], qIdx = 0, qScore = 0, qAnswered = false, qAnswers = [];
+
+function initQuiz() {
+  qDeck = [...questions].sort(() => Math.random() - 0.5);
+  qIdx = 0; qScore = 0; qAnswered = false; qAnswers = [];
+  document.getElementById('quiz-wrap').style.display = 'block';
+  document.getElementById('results').classList.remove('show');
+  renderQ();
+}
+
+function renderQ() {
+  qAnswered = false;
+  const q = qDeck[qIdx];
+  document.getElementById('q-cat').textContent = q.cat;
+  document.getElementById('q-text').textContent = q.q;
+  document.getElementById('qs-num').textContent = `Q ${qIdx + 1} / ${qDeck.length}`;
+  document.getElementById('qs-score').textContent = `Score: ${qScore}`;
+  document.getElementById('q-prog').style.width = `${(qIdx / qDeck.length) * 100}%`;
+  document.getElementById('fb').className = 'fb-box';
+  document.getElementById('q-next').style.display = 'none';
+
+  const opts = document.getElementById('opts');
+  opts.innerHTML = '';
+  const letters = ['A','B','C','D'];
+  q.opts.forEach((o, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'opt-btn';
+    btn.innerHTML = `<span class="opt-letter">${letters[i]}</span><span>${o}</span>`;
+    btn.onclick = () => selectQ(i);
+    opts.appendChild(btn);
+  });
+
+  document.getElementById('q-card').style.animation = 'none';
+  requestAnimationFrame(() => { document.getElementById('q-card').style.animation = 'slideIn 0.35s ease'; });
+}
+
+function selectQ(idx) {
+  if (qAnswered) return;
+  qAnswered = true;
+  const q = qDeck[qIdx];
+  const btns = document.querySelectorAll('.opt-btn');
+  btns.forEach(b => b.disabled = true);
+  const correct = idx === q.ans;
+  btns[idx].classList.add(correct ? 'correct' : 'wrong');
+  if (!correct) btns[q.ans].classList.add('correct');
+  if (correct) qScore++;
+  qAnswers.push({ q: q.q, your: idx, ans: q.ans, opts: q.opts, correct });
+
+  const fb = document.getElementById('fb');
+  fb.className = `fb-box show ${correct ? 'correct' : 'wrong'}`;
+  fb.textContent = (correct ? '✓ Correct. ' : '✗ ') + q.explain;
+
+  document.getElementById('qs-score').textContent = `Score: ${qScore}`;
+  document.getElementById('q-next').style.display = 'block';
+}
+
+function nextQ() {
+  qIdx++;
+  if (qIdx >= qDeck.length) showResults();
+  else renderQ();
+}
+
+function showResults() {
+  document.getElementById('quiz-wrap').style.display = 'none';
+  const r = document.getElementById('results');
+  r.classList.add('show');
+  const pct = Math.round((qScore / qDeck.length) * 100);
+  const el = document.getElementById('r-pct');
+  el.textContent = pct + '%';
+  el.className = `result-pct ${pct >= 80 ? 'great' : pct >= 60 ? 'ok' : 'poor'}`;
+  document.getElementById('r-sub').textContent = pct >= 80 ? '— Excellent —' : pct >= 60 ? '— Keep Reviewing —' : '— More Study Needed —';
+  document.getElementById('r-c').textContent = qScore;
+  document.getElementById('r-w').textContent = qDeck.length - qScore;
+  document.getElementById('r-t').textContent = qDeck.length;
+  document.getElementById('q-prog').style.width = '100%';
+
+  const rev = document.getElementById('rev-list');
+  rev.innerHTML = '';
+  qAnswers.forEach((a, i) => {
+    const d = document.createElement('div');
+    d.className = `rev-item ${a.correct ? 'correct' : 'wrong'}`;
+    d.innerHTML = `<div class="rev-q">${i + 1}. ${a.q}</div>
+      ${!a.correct ? `<div class="rev-your">✗ Your answer: ${a.opts[a.your]}</div>` : ''}
+      <div class="rev-ans">✓ ${a.correct ? 'Correct' : 'Answer'}: ${a.opts[a.ans]}</div>`;
+    rev.appendChild(d);
+  });
+}
+
+initQuiz();
+
+// ============================================================
+// CHEAT SHEET
+// ============================================================
+const csItems = [
+  { title:'Frequent Pattern Types', body:'<b>Itemset</b>: unordered set of items (e.g., {milk, bread}). <b>Sequential pattern</b>: ordered sequence (PC → camera → memory card). <b>Structured pattern</b>: subgraphs, subtrees, sublattices.' },
+  { title:'Two-Step Mining Process', body:'Step 1: Find all frequent itemsets (those with support ≥ min_sup). Step 2: Generate strong association rules from each frequent itemset (those with confidence ≥ min_conf).' },
+  { title:'Pruning via Thresholds', body:'All rules from the same itemset share identical support. If the parent itemset is infrequent, all rules derived from it can be pruned immediately without computing their confidence.' },
+  { title:'Why 2^k − 1 Sub-Patterns?', body:'k items can be combined into subsets in 2^k − 1 ways (excluding empty set). For k=100, this is ≈1.27×10^30 — impossible to test exhaustively.' },
+  { title:'Apriori: Key Insight', body:'Exploit downward closure: if {A,B} is infrequent, don\'t generate or test {A,B,C}. This prunes entire subtrees of the itemset lattice, dramatically reducing candidates.' },
+  { title:'Apriori: Join Condition', body:'To join two (k−1)-itemsets into a candidate k-itemset, their first (k−2) items must match. Items must be in lexicographic order for this to work correctly.' },
+  { title:'ECLAT Advantage', body:'By converting to vertical format and using TID_set intersections, ECLAT avoids repeated full database scans. Support counting becomes a set intersection operation.' },
+  { title:'Association ≠ Causality', body:'An association rule A → B only shows co-occurrence. It does NOT imply that A causes B. Additional investigation or domain knowledge is needed to establish causality.' },
+  { title:'Lift: Interpretation Guide', body:'lift < 1: negative correlation (A suppresses B). lift = 1: independent (no relationship). lift > 1: positive correlation (A promotes B). Always check lift alongside confidence.' },
+  { title:'The Confidence Trap', body:'Example: computer_games → videos, conf=67% seems strong. But P(videos)=75% > 67%, so games REDUCE video purchases. Confidence alone is deceiving; lift reveals the truth.' },
+  { title:'Interestingness Measures', body:'20+ measures exist: φ-coefficient, Yule\'s Q & Y, Cohen\'s k, PS (Piatetsky-Shapiro), Cosine, Jaccard, Mutual Information, Conviction, Laplace, χ², etc. Each captures different nuances.' },
+  { title:'Rule Generation from Lk', body:'For frequent itemset L, generate all nonempty subsets S. Output rule S → (L−S) iff support_count(L) / support_count(S) ≥ min_conf. All rules auto-satisfy min_sup.' },
+];
+
+const algoItems = [
+  { title:'Apriori Step-by-Step', body:'1. Scan DB → find L1 (frequent 1-itemsets).<br>2. Generate C2 = L1 ⋈ L1.<br>3. Scan DB → find L2.<br>4. Generate C3 = L2 ⋈ L2, prune with Apriori.<br>5. Repeat until Lk = ∅.' },
+  { title:'Apriori Prune Step Detail', body:'For each candidate c in Ck: check all (k−1)-subsets. If any subset is NOT in Lk−1, remove c from Ck. This prevents testing itemsets that cannot possibly be frequent.' },
+  { title:'ECLAT Step-by-Step', body:'1. Scan DB once → build vertical format {item: TID_set}.<br>2. Compute 2-itemset TID_sets by intersecting pairs.<br>3. Compute k-itemset TID_sets by intersecting (k−1)-sets.<br>4. Repeat until no new frequent sets.' },
+  { title:'Association Rule Confidence Formula', body:'For frequent itemset I and subset S:<br>conf(S → I−S) = support_count(I) / support_count(S)<br>Output rule if conf ≥ min_conf.' },
+];
+
+const g = document.getElementById('cs-grid');
+csItems.forEach(it => {
+  const d = document.createElement('div');
+  d.className = 'cs-card';
+  d.innerHTML = `<h4>${it.title}</h4><p>${it.body}</p>`;
+  g.appendChild(d);
+});
+
+const ag = document.getElementById('algo-grid');
+algoItems.forEach(it => {
+  const d = document.createElement('div');
+  d.className = 'cs-card';
+  d.innerHTML = `<h4>${it.title}</h4><p>${it.body}</p>`;
+  ag.appendChild(d);
+});
+
+// ============================================================
+// NAV
+// ============================================================
+function show(id, btn) {
+  document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'quiz') initQuiz();
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('fc').classList.contains('active')) return;
+  if (e.key === 'ArrowRight') nextFC();
+  else if (e.key === 'ArrowLeft') prevFC();
+  else if (e.key === ' ') { e.preventDefault(); flipFC(); }
+});
+</script>
+</body>
+</html>
